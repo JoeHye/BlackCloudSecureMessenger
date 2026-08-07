@@ -1,0 +1,3 @@
+- [ ] Create P2PManager.kt
+- [ ] Create P2PVerificationTest.kt
+- [ ] Run unit tests
