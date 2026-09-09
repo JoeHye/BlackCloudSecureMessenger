@@ -59,7 +59,7 @@ class P2PManager {
         port: Int = DEFAULT_LISTEN_PORT
     ): RepositoryResult<PeerId> {
         if (host != null) {
-            return RepositoryResult.Error(
+            return RepositoryResult.Failure(
                 message = "Host is already running with PeerId: ${host?.peerId?.toBase58()}",
                 cause = IllegalStateException("Host already initialized")
             )
@@ -69,7 +69,7 @@ class P2PManager {
         val listenMultiaddr = try {
             Multiaddr.fromString(listenMultiaddrString)
         } catch (e: IllegalArgumentException) {
-            return RepositoryResult.Error(
+            return RepositoryResult.Failure(
                 message = "Failed to construct valid listen multiaddr from '$listenMultiaddrString'",
                 cause = e
             )
@@ -110,7 +110,7 @@ class P2PManager {
             this.host?.stop()
             this.host = null
             this.chatBinding = null
-            RepositoryResult.Error(
+            RepositoryResult.Failure(
                 message = "Timed out starting libp2p host on $listenMultiaddrString after $NETWORK_TIMEOUT_SECONDS seconds",
                 cause = te
             )
@@ -118,7 +118,7 @@ class P2PManager {
             this.host?.stop()
             this.host = null
             this.chatBinding = null
-            RepositoryResult.Error(
+            RepositoryResult.Failure(
                 message = "Fatal error initializing libp2p host on $listenMultiaddrString: ${e.message}",
                 cause = e
             )
@@ -134,7 +134,7 @@ class P2PManager {
 
         if (currentHost == null) {
             resultFuture.complete(
-                RepositoryResult.Error(
+                RepositoryResult.Failure(
                     message = "Cannot connect to peer: Local P2P host is not running. Call startHost() first.",
                     cause = IllegalStateException("Host not started")
                 )
@@ -146,7 +146,7 @@ class P2PManager {
             Multiaddr.fromString(multiaddrString)
         } catch (e: IllegalArgumentException) {
             resultFuture.complete(
-                RepositoryResult.Error(
+                RepositoryResult.Failure(
                     message = "Malformed multiaddr string '$multiaddrString': ${e.message}",
                     cause = e
                 )
@@ -157,7 +157,7 @@ class P2PManager {
         val targetPeerId = targetMultiaddr.getPeerId()
         if (targetPeerId == null) {
             resultFuture.complete(
-                RepositoryResult.Error(
+                RepositoryResult.Failure(
                     message = "Multiaddr must contain a p2p peer ID component to establish a stream",
                     cause = IllegalArgumentException("Missing PeerId in multiaddr")
                 )
@@ -179,7 +179,7 @@ class P2PManager {
                     if (throwable != null) {
                         activeConnections.remove(targetPeerIdString)
                         resultFuture.complete(
-                            RepositoryResult.Error(
+                            RepositoryResult.Failure(
                                 message = "Failed to establish chat stream to $multiaddrString: ${throwable.message}",
                                 cause = throwable
                             )
@@ -187,7 +187,7 @@ class P2PManager {
                     } else if (controller == null) {
                         activeConnections.remove(targetPeerIdString)
                         resultFuture.complete(
-                            RepositoryResult.Error(
+                            RepositoryResult.Failure(
                                 message = "Chat controller returned null after negotiating $PROTOCOL_ID with $multiaddrString",
                                 cause = IllegalStateException("Null protocol controller")
                             )
@@ -199,7 +199,7 @@ class P2PManager {
                 }
         } catch (e: Exception) {
             resultFuture.complete(
-                RepositoryResult.Error(
+                RepositoryResult.Failure(
                     message = "Unexpected failure initiating stream to $multiaddrString: ${e.message}",
                     cause = e
                 )
@@ -217,7 +217,7 @@ class P2PManager {
 
         if (host == null) {
             resultFuture.complete(
-                RepositoryResult.Error(
+                RepositoryResult.Failure(
                     message = "Cannot send message: Local P2P host is stopped.",
                     cause = IllegalStateException("Host stopped")
                 )
@@ -227,7 +227,7 @@ class P2PManager {
 
         if (payload.isEmpty()) {
             resultFuture.complete(
-                RepositoryResult.Error(
+                RepositoryResult.Failure(
                     message = "Cannot send empty payload to peer $peerId",
                     cause = IllegalArgumentException("Empty payload")
                 )
@@ -238,7 +238,7 @@ class P2PManager {
         val controller = activeConnections[peerId]
         if (controller == null) {
             resultFuture.complete(
-                RepositoryResult.Error(
+                RepositoryResult.Failure(
                     message = "No active chat stream available for peer $peerId. Call connectToPeer() first.",
                     cause = IllegalStateException("Stream not connected")
                 )
@@ -253,7 +253,7 @@ class P2PManager {
                     if (throwable != null) {
                         activeConnections.remove(peerId)
                         resultFuture.complete(
-                            RepositoryResult.Error(
+                            RepositoryResult.Failure(
                                 message = "Failed to deliver payload over wire to peer $peerId: ${throwable.message}",
                                 cause = throwable
                             )
@@ -265,7 +265,7 @@ class P2PManager {
         } catch (e: Exception) {
             activeConnections.remove(peerId)
             resultFuture.complete(
-                RepositoryResult.Error(
+                RepositoryResult.Failure(
                     message = "Exception dispatched while sending payload to peer $peerId: ${e.message}",
                     cause = e
                 )
@@ -280,7 +280,7 @@ class P2PManager {
      */
     fun disconnect(peerId: String): RepositoryResult<Unit> {
         val controller = activeConnections.remove(peerId)
-            ?: return RepositoryResult.Error(
+            ?: return RepositoryResult.Failure(
                 message = "Cannot disconnect: No active connection found for peer $peerId",
                 cause = NoSuchElementException("Peer not found in active streams")
             )
@@ -288,7 +288,7 @@ class P2PManager {
         return try {
             RepositoryResult.Success(Unit)
         } catch (e: Exception) {
-            RepositoryResult.Error(
+            RepositoryResult.Failure(
                 message = "Error disconnecting peer $peerId: ${e.message}",
                 cause = e
             )
@@ -301,7 +301,7 @@ class P2PManager {
     @Synchronized
     fun stopHost(): RepositoryResult<Unit> {
         val currentHost = host
-            ?: return RepositoryResult.Error(
+            ?: return RepositoryResult.Failure(
                 message = "Cannot stop host: No host instance is currently active",
                 cause = IllegalStateException("Host not running")
             )
@@ -316,14 +316,14 @@ class P2PManager {
         } catch (te: TimeoutException) {
             this.host = null
             this.chatBinding = null
-            RepositoryResult.Error(
+            RepositoryResult.Failure(
                 message = "Host shutdown timed out after $NETWORK_TIMEOUT_SECONDS seconds",
                 cause = te
             )
         } catch (e: Exception) {
             this.host = null
             this.chatBinding = null
-            RepositoryResult.Error(
+            RepositoryResult.Failure(
                 message = "Encountered error while stopping libp2p host: ${e.message}",
                 cause = e
             )
