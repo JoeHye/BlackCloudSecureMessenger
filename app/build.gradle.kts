@@ -33,6 +33,10 @@ android {
     }
     buildFeatures {
         compose = true
+        // Required for BuildConfig.DEBUG (used by SecureMessengerApplication to
+        // gate the debug-only crash handler). AGP 8+ disables BuildConfig
+        // generation by default, so this must be explicit.
+        buildConfig = true
     }
 
     packaging {
