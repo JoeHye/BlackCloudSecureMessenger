@@ -6,12 +6,16 @@ import android.os.Bundle
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import java.security.KeyStore
@@ -21,7 +25,13 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class MainActivity : ComponentActivity() {
+// NOTE on scope: changed from ComponentActivity to FragmentActivity so the
+// new onboarding flow's biometric-setup step can use androidx.biometric's
+// BiometricPrompt, whose only constructors take a FragmentActivity or
+// Fragment (there is no plain-ComponentActivity overload in 1.1.0).
+// FragmentActivity extends ComponentActivity, so setContent/Compose and
+// everything else below is unaffected.
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -100,13 +110,37 @@ class MainActivity : ComponentActivity() {
 
         val viewModel = ViewModelProvider(this, factory)[ChatViewModel::class.java]
 
+        val onboardingFactory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                return OnboardingViewModel(p2pManager, prefs) as T
+            }
+        }
+        val onboardingViewModel = ViewModelProvider(this, onboardingFactory)[OnboardingViewModel::class.java]
+
         setContent {
+            // Hoisted here (not inside OnboardingViewModel) because it's
+            // purely which top-level screen is showing, not onboarding
+            // data — and it needs to survive recomposition but not
+            // process death (a relaunch after process death re-reads
+            // hasCompletedOnboarding() from prefs below anyway).
+            var showOnboarding by remember {
+                mutableStateOf(!OnboardingViewModel.hasCompletedOnboarding(prefs))
+            }
+
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ChatScreen(viewModel = viewModel)
+                    if (showOnboarding) {
+                        OnboardingNavGraph(
+                            viewModel = onboardingViewModel,
+                            onOnboardingComplete = { showOnboarding = false }
+                        )
+                    } else {
+                        ChatScreen(viewModel = viewModel)
+                    }
                 }
             }
         }

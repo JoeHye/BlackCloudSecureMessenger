@@ -20,7 +20,15 @@
         android:theme="@style/Theme.BlackCloudSecureMessenger"
         tools:targetApi="31">
 
-        <!-- Existing MainActivity setup... -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.BlackCloudSecureMessenger">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <!-- Registering the Background P2P Service -->
         <service
