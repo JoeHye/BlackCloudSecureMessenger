@@ -63,6 +63,12 @@ dependencies {
     // Jetpack Navigation for Compose
     implementation("androidx.navigation:navigation-compose:2.9.8")
 
+    // BiometricPrompt, used by the onboarding security-setup screen to gate
+    // the device-bound Keystore key behind biometric/device-credential auth.
+    // 1.1.0 is the long-stable release line (unchanged since 2021); using it
+    // rather than guessing at a newer unverified version number.
+    implementation("androidx.biometric:biometric:1.1.0")
+
     // Room components with KSP
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
