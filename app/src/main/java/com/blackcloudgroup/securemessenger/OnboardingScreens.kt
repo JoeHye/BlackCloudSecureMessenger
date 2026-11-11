@@ -1,6 +1,8 @@
 // OnboardingScreens.kt
 package com.blackcloudgroup.securemessenger
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -90,6 +92,8 @@ private fun OnboardingScaffold(
 fun WelcomeScreen(
     state: OnboardingUiState,
     onSelect: (ThreatModel) -> Unit,
+    onStartBridgeScan: () -> Unit,
+    onUseLocalFallback: () -> Unit,
     onNext: () -> Unit
 ) {
     OnboardingScaffold(
@@ -123,6 +127,136 @@ fun WelcomeScreen(
             selected = state.selectedThreatModel == ThreatModel.LOCAL_MESH_BRIDGE,
             onClick = { onSelect(ThreatModel.LOCAL_MESH_BRIDGE) }
         )
+
+        if (state.selectedThreatModel == ThreatModel.LOCAL_MESH_BRIDGE) {
+            Spacer(modifier = Modifier.height(16.dp))
+            BridgeDiscoverySection(
+                state = state,
+                onStartScan = onStartBridgeScan,
+                onUseFallback = onUseLocalFallback
+            )
+        }
+    }
+}
+
+/**
+ * Looks for a nearby Project Canopy / Heltec / nRF52840 hardware bridge over
+ * BLE. Entirely optional: whatever happens here, the Next button above stays
+ * enabled the moment a threat model is picked (see
+ * [OnboardingUiState.canLeaveWelcome]) — a missing bridge, denied
+ * permission, or disabled Bluetooth never blocks onboarding, it just means
+ * the app falls back to Wi-Fi/cellular P2P directly.
+ */
+@Composable
+private fun BridgeDiscoverySection(
+    state: OnboardingUiState,
+    onStartScan: () -> Unit,
+    onUseFallback: () -> Unit
+) {
+    val context = LocalContext.current
+    var hasRequestedPermission by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        hasRequestedPermission = true
+        if (grants.values.all { it }) {
+            onStartScan()
+        } else {
+            onUseFallback()
+        }
+    }
+
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = "Hardware bridge", fontWeight = FontWeight.SemiBold)
+
+            when (val scanState = state.bleScanState) {
+                is BleDeviceState.Idle -> {
+                    Text(
+                        text = "Optional: look for a nearby bridge device to extend your range.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                    )
+                    Button(onClick = {
+                        if (BlePermissions.hasAllRequired(context)) {
+                            onStartScan()
+                        } else {
+                            permissionLauncher.launch(BlePermissions.requiredForScan())
+                        }
+                    }) {
+                        Text("Scan for bridge device")
+                    }
+                }
+                is BleDeviceState.Scanning -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Scanning for nearby bridges…", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                is BleDeviceState.BridgeFound -> {
+                    Text(
+                        text = "Found: ${scanState.device.name}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                is BleDeviceState.ScanTimedOutNoBridgeFound -> {
+                    Text(
+                        text = "No bridge device found nearby. Continuing with Wi-Fi/cellular directly.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                is BleDeviceState.BluetoothDisabled -> {
+                    Text(
+                        text = "Bluetooth is off. Continuing with Wi-Fi/cellular directly.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                is BleDeviceState.Unsupported -> {
+                    Text(
+                        text = "This device doesn't support BLE bridge hardware. Using Wi-Fi/cellular directly.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                is BleDeviceState.PermissionMissing -> {
+                    Text(
+                        text = if (hasRequestedPermission) {
+                            "Bridge scanning permission was denied. Continuing with Wi-Fi/cellular directly."
+                        } else {
+                            "Bridge scanning needs Bluetooth permission."
+                        },
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                is BleDeviceState.Error -> {
+                    Text(
+                        text = "Couldn't scan for a bridge (${scanState.message}). Continuing with Wi-Fi/cellular directly.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
+            if (state.discoveredBridges.size > 1) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${state.discoveredBridges.size} bridges found nearby.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (state.usingLocalFallback) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "✓ Using local Wi-Fi/cellular peer-to-peer",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 

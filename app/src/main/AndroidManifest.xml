@@ -9,6 +9,28 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- BLE bridge discovery (BleBridgeScanner). Android 12 (API 31) replaced
+         the legacy location-permission-gated BLE scan model with dedicated
+         runtime permissions; both paths are declared so minSdk 26 devices
+         still work. neverForLocation is accurate here: scan results are
+         matched by advertised device name only, never used to derive
+         physical location. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="31" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+
+    <!-- required="false": BLE bridge hardware is an optional enhancement —
+         onboarding's Local Mesh Bridge option falls back to Wi-Fi/cellular
+         P2P on a device with no BLE radio at all. -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
