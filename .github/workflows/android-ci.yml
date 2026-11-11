@@ -3,8 +3,10 @@ name: Android CI
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  # No branches filter: this repo uses stacked feature branches (e.g. a BLE
+  # branch PR'd against an onboarding branch, not yet against main), and a
+  # PR whose base isn't main never ran CI at all under the old filter.
+  pull_request: {}
 
 jobs:
   build:
