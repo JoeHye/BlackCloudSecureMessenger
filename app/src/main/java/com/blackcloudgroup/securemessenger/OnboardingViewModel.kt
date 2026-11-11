@@ -6,6 +6,7 @@ import androidx.biometric.BiometricManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,6 +53,14 @@ data class OnboardingUiState(
     val biometricEnabled: Boolean = false,
     val keystoreReady: Boolean = false,
 
+    // Step 1 (continued): optional BLE hardware-bridge discovery, shown
+    // only when selectedThreatModel == LOCAL_MESH_BRIDGE. Never gates
+    // canLeaveWelcome — a missing/disabled/absent bridge always falls back
+    // to local Wi-Fi/cellular P2P rather than blocking onboarding.
+    val bleScanState: BleDeviceState = BleDeviceState.Idle,
+    val discoveredBridges: List<BridgeDeviceInfo> = emptyList(),
+    val usingLocalFallback: Boolean = false,
+
     // Step 4: Backup
     val backupChoice: BackupChoice? = null,
     val backupConfirmed: Boolean = false,
@@ -89,16 +98,80 @@ data class OnboardingUiState(
  */
 class OnboardingViewModel(
     private val p2pManager: P2PManager,
-    private val prefs: SharedPreferences
+    private val prefs: SharedPreferences,
+    private val bleBridgeScanner: BleBridgeScanner = BleBridgeScanner()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OnboardingUiState())
     val uiState: StateFlow<OnboardingUiState> = _uiState.asStateFlow()
 
+    private var bridgeScanJob: Job? = null
+
     // --- Step 1: Welcome -----------------------------------------------
 
     fun selectThreatModel(model: ThreatModel) {
         _uiState.update { it.copy(selectedThreatModel = model) }
+
+        // Only the mesh-bridge path has any BLE discovery to do; switching
+        // back to peer-to-peer mid-scan should stop it rather than leave a
+        // radio scan running for a path the user isn't on anymore.
+        if (model == ThreatModel.PEER_TO_PEER) {
+            stopBridgeScan()
+        }
+    }
+
+    /**
+     * Starts (or restarts) a single bounded BLE scan for known bridge
+     * hardware. Safe to call repeatedly (e.g. a "scan again" retry) —
+     * cancels any scan already in flight first.
+     *
+     * Every terminal [BleDeviceState] this collects — timeout, disabled
+     * Bluetooth, unsupported hardware, missing permission, or a scan
+     * error — sets [OnboardingUiState.usingLocalFallback], never an
+     * error that blocks [OnboardingUiState.canLeaveWelcome]. That's the
+     * actual "seamless fallback" requirement: the user can always
+     * proceed with Wi-Fi/cellular P2P even if BLE never works.
+     */
+    fun startBridgeScan(context: Context) {
+        stopBridgeScan()
+        _uiState.update {
+            it.copy(bleScanState = BleDeviceState.Scanning, discoveredBridges = emptyList(), usingLocalFallback = false)
+        }
+
+        bridgeScanJob = viewModelScope.launch(Dispatchers.Main) {
+            bleBridgeScanner.scanForBridges(context).collect { scanState ->
+                _uiState.update { state ->
+                    val updatedBridges = if (scanState is BleDeviceState.BridgeFound) {
+                        state.discoveredBridges + scanState.device
+                    } else {
+                        state.discoveredBridges
+                    }
+
+                    val isTerminalWithoutBridge = scanState is BleDeviceState.ScanTimedOutNoBridgeFound ||
+                        scanState is BleDeviceState.Unsupported ||
+                        scanState is BleDeviceState.BluetoothDisabled ||
+                        scanState is BleDeviceState.PermissionMissing ||
+                        scanState is BleDeviceState.Error
+
+                    state.copy(
+                        bleScanState = scanState,
+                        discoveredBridges = updatedBridges,
+                        usingLocalFallback = state.usingLocalFallback || isTerminalWithoutBridge
+                    )
+                }
+            }
+        }
+    }
+
+    private fun stopBridgeScan() {
+        bridgeScanJob?.cancel()
+        bridgeScanJob = null
+    }
+
+    /** Explicit, user-initiated skip of BLE discovery entirely — not a silent default. */
+    fun useLocalFallbackNow() {
+        stopBridgeScan()
+        _uiState.update { it.copy(bleScanState = BleDeviceState.Idle, usingLocalFallback = true) }
     }
 
     // --- Step 2: Identity -------------------------------------------------

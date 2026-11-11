@@ -53,6 +53,8 @@ fun OnboardingNavGraph(
             WelcomeScreen(
                 state = state,
                 onSelect = viewModel::selectThreatModel,
+                onStartBridgeScan = { viewModel.startBridgeScan(context) },
+                onUseLocalFallback = viewModel::useLocalFallbackNow,
                 onNext = { goToNextStep(OnboardingRoute.Welcome) }
             )
         }
